@@ -1,9 +1,13 @@
-// check-superb.js
 import * as cheerio from "cheerio";
 import iconv from "iconv-lite";
+import fs from "node:fs";
+import path from "node:path";
 
 const URL =
   "https://euratec.mobile.bg/obiavi/avtomobili-dzhipove/skoda/superb/avtomatichna?extended=1";
+
+const STATE_PATH = path.join("state", "seen.json");
+const NEW_PATH = path.join("state", "new.json");
 
 function toAbsoluteUrl(href) {
   if (!href) return null;
@@ -12,6 +16,15 @@ function toAbsoluteUrl(href) {
   } catch {
     return null;
   }
+}
+
+function normalizeUrl(raw) {
+  const u = new URL(raw);
+  u.hash = "";
+  ["utm_source", "utm_medium", "utm_campaign", "fbclid", "gclid"].forEach((p) =>
+    u.searchParams.delete(p)
+  );
+  return u.toString().replace(/\/$/, "");
 }
 
 function extractCharsetFromContentType(contentType) {
@@ -24,7 +37,9 @@ function extractCharsetFromMeta(htmlAsciiLike) {
   const m1 = htmlAsciiLike.match(/<meta[^>]*charset\s*=\s*["']?([^"'>\s]+)/i);
   if (m1?.[1]) return m1[1].trim().toLowerCase();
 
-  const m2 = htmlAsciiLike.match(/content\s*=\s*["'][^"']*charset\s*=\s*([^"';\s]+)/i);
+  const m2 = htmlAsciiLike.match(
+    /content\s*=\s*["'][^"']*charset\s*=\s*([^"';\s]+)/i
+  );
   if (m2?.[1]) return m2[1].trim().toLowerCase();
 
   return null;
@@ -51,16 +66,10 @@ async function fetchHtmlWithCorrectEncoding(url) {
 
   if (charset === "utf8") charset = "utf-8";
   if (charset === "win-1251") charset = "windows-1251";
-
   if (!charset) charset = "windows-1251";
+  if (!iconv.encodingExists(charset)) charset = "utf-8";
 
-  if (!iconv.encodingExists(charset)) {
-    charset = "utf-8";
-  }
-
-  const html = iconv.decode(buf, charset);
-
-  return html;
+  return iconv.decode(buf, charset);
 }
 
 function parseListings(html) {
@@ -72,30 +81,66 @@ function parseListings(html) {
     const a = $(el);
     const title = a.text().replace(/\s+/g, " ").trim();
     const href = a.attr("href")?.trim();
-
     if (!title || !href) return;
 
-    listings.push({ title, url: href });
+    const abs = toAbsoluteUrl(href);
+    if (!abs) return;
+
+    const url = normalizeUrl(abs);
+    listings.push({ title, url });
   });
 
   return listings;
 }
 
 async function getListings() {
-  try {
-    const html = await fetchHtmlWithCorrectEncoding(URL);
-    const listings = parseListings(html);
+  const html = await fetchHtmlWithCorrectEncoding(URL);
+  return parseListings(html);
+}
 
-    return listings;
-  } catch (err) {
-    console.error("Failed:", err?.message || err);
-    process.exitCode = 1;
+function readSeen() {
+  try {
+    const data = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
+    return Array.isArray(data.seen) ? data.seen : [];
+  } catch {
+    return [];
   }
+}
+
+function writeJson(filePath, data) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
 }
 
 async function main() {
   const listings = await getListings();
-  console.log(listings);
+
+  const seen = readSeen();
+  const seenSet = new Set(seen);
+
+  const newCars = listings.filter((x) => !seenSet.has(x.url));
+
+  // mark everything as seen
+  const updatedSeen = Array.from(
+    new Set([...seen, ...listings.map((x) => x.url)])
+  );
+
+  writeJson(STATE_PATH, { seen: updatedSeen });
+  writeJson(NEW_PATH, { newCars });
+
+  if (newCars.length === 0) {
+    console.log("No new cars.");
+    process.exit(0);
+  }
+
+  console.log(`New cars: ${newCars.length}`);
+  newCars.forEach((c) => console.log(`${c.title} | ${c.url}`));
+
+  // exit code 2 => “new cars found”
+  process.exit(2);
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

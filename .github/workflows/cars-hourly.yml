@@ -1,9 +1,13 @@
-name: Hourly car watcher
+name: Hourly Superb watcher
 
 on:
   schedule:
-    - cron: "0 * * * *" # every hour
+    - cron: "0 * * * *"   # every hour
   workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
 
 jobs:
   run:
@@ -17,5 +21,36 @@ jobs:
 
       - run: npm ci
 
-      - name: Run script
-        run: npm run start
+      - name: Run watcher
+        id: watcher
+        run: |
+          set +e
+          npm run cars:run
+          code=$?
+          echo "exit_code=$code" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Create issue (notification)
+        if: steps.watcher.outputs.exit_code == '2'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const data = JSON.parse(fs.readFileSync("state/new.json", "utf8"));
+            const items = data.newCars || [];
+            const body = items.map(c => `- **${c.title}**\n  ${c.url}`).join("\n\n");
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `New Superb listings: ${items.length}`,
+              body
+            });
+
+      - name: Commit updated state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state/seen.json state/new.json || true
+          git diff --staged --quiet && exit 0
+          git commit -m "Update seen cars"
+          git push
