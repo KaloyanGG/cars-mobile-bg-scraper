@@ -1,0 +1,26 @@
+{
+  "name": "cars-mobile-bg-scraper",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KaloyanGG/cars-mobile-bg-scraper.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/KaloyanGG/cars-mobile-bg-scraper/issues"
+  },
+  "homepage": "https://github.com/KaloyanGG/cars-mobile-bg-scraper#readme",
+  "dependencies": {
+    "cheerio": "^1.1.2",
+    "iconv-lite": "^0.7.1"
+  }
+}
