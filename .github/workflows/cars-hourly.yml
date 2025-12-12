@@ -38,6 +38,8 @@ jobs:
             const fs = require("fs");
             const data = JSON.parse(fs.readFileSync("state/new.json", "utf8"));
             const items = data.newCars || [];
+            if (!items.length) return;
+
             const body = items.map(c => `- **${c.title}**\n  ${c.url}`).join("\n\n");
             await github.rest.issues.create({
               owner: context.repo.owner,
