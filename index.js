@@ -9,24 +9,6 @@ const URL =
 const STATE_PATH = path.join("state", "seen.json");
 const NEW_PATH = path.join("state", "new.json");
 
-function toAbsoluteUrl(href) {
-  if (!href) return null;
-  try {
-    return new URL(href, URL).toString();
-  } catch {
-    return null;
-  }
-}
-
-function normalizeUrl(raw) {
-  const u = new URL(raw);
-  u.hash = "";
-  ["utm_source", "utm_medium", "utm_campaign", "fbclid", "gclid"].forEach((p) =>
-    u.searchParams.delete(p)
-  );
-  return u.toString().replace(/\/$/, "");
-}
-
 function extractCharsetFromContentType(contentType) {
   if (!contentType) return null;
   const m = contentType.match(/charset\s*=\s*["']?([^;"'\s]+)/i);
@@ -80,13 +62,7 @@ function parseListings(html) {
   nodes.each((_, el) => {
     const a = $(el);
     const title = a.text().replace(/\s+/g, " ").trim();
-    const href = a.attr("href")?.trim();
-    if (!title || !href) return;
-
-    const abs = toAbsoluteUrl(href);
-    if (!abs) return;
-
-    const url = normalizeUrl(abs);
+    const url = a.attr("href")?.trim();
     listings.push({ title, url });
   });
 
@@ -107,36 +83,43 @@ function readSeen() {
   }
 }
 
-function writeJson(filePath, data) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
+function writeSeen(seen) {
+  fs.mkdirSync(path.dirname(STATE_PATH), { recursive: true });
+  fs.writeFileSync(STATE_PATH, JSON.stringify({ seen }, null, 2), "utf8");
+}
+
+// ✅ new: always write new.json for this run
+function writeNewCars(newCars) {
+  fs.mkdirSync(path.dirname(NEW_PATH), { recursive: true });
+  fs.writeFileSync(NEW_PATH, JSON.stringify({ newCars }, null, 2), "utf8");
 }
 
 async function main() {
   const listings = await getListings();
 
+  // optional but smart: ignore empty/undefined urls
+  const cleanListings = listings.filter((l) => l?.url);
+
   const seen = readSeen();
   const seenSet = new Set(seen);
 
-  const newCars = listings.filter((x) => !seenSet.has(x.url));
+  const newCars = cleanListings.filter((l) => !seenSet.has(l.url));
 
-  // mark everything as seen
-  const updatedSeen = Array.from(
-    new Set([...seen, ...listings.map((x) => x.url)])
-  );
+  // ✅ important: overwrite state/new.json EVERY RUN
+  writeNewCars(newCars);
 
-  writeJson(STATE_PATH, { seen: updatedSeen });
-  writeJson(NEW_PATH, { newCars });
+  // update seen list
+  writeSeen([...new Set([...seen, ...cleanListings.map((l) => l.url)])]);
 
   if (newCars.length === 0) {
-    console.log("No new cars.");
+    console.log("No new cars");
     process.exit(0);
   }
 
   console.log(`New cars: ${newCars.length}`);
-  newCars.forEach((c) => console.log(`${c.title} | ${c.url}`));
+  newCars.forEach((c) => console.log(c.url));
 
-  // exit code 2 => “new cars found”
+  // signal GitHub Actions
   process.exit(2);
 }
 
