@@ -1,3 +1,12 @@
 {
-  "newCars": []
+  "newCars": [
+    {
+      "title": "Skoda Superb 2.0TDI 7DSG 4X4",
+      "url": "https://euratec.mobile.bg/obiava-11771859042449376-skoda-superb-2-0tdi-7dsg-4x4"
+    },
+    {
+      "title": "Skoda Superb 2.0 TSI 7DSG",
+      "url": "https://euratec.mobile.bg/obiava-11771855672719825-skoda-superb-2-0-tsi-7dsg"
+    }
+  ]
 }
